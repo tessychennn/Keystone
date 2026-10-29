@@ -6,7 +6,8 @@ var DOW=["一","二","三","四","五","六","日"];
 var SLOT=22, CFG_KEY="keystone:config", NOTE_KEY="keystone:notes", TODO_KEY="keystone:todos";
 var UNCAT={id:0,name:"未分類",color:"#A8B2C4"};
 
-var cfg={budget:40,startHour:8,endHour:23,tasks:[],seq:1};
+/* budget＝上班總時數（舊資料沿用），budgetOff＝放假總時數 */
+var cfg={budget:40,budgetOff:0,startHour:8,endHour:23,tasks:[],seq:1};
 var week={blocks:[],seq:1};
 var notes={items:[],cats:[],seq:1,cseq:1};
 var todos={items:[],seq:1,day:""};
@@ -47,6 +48,10 @@ function saveSoon(){
 function doneByTask(){ var m={}; week.blocks.forEach(function(b){ m[b.taskId]=(m[b.taskId]||0)+b.len*0.5; }); return m; }
 /* 沒設定過的項目一律當上班 */
 function isWork(t){ return t.kind!=="off"; }
+/* 上班或放假項目的每週目標時數加總 */
+function plannedOf(work){
+  return cfg.tasks.reduce(function(s,t){ return s+(isWork(t)===work?(t.target||0):0); },0);
+}
 function taskById(id){ for(var i=0;i<cfg.tasks.length;i++) if(cfg.tasks[i].id===id) return cfg.tasks[i]; return null; }
 function catOf(id){
   for(var i=0;i<notes.cats.length;i++) if(notes.cats[i].id===id) return notes.cats[i];
@@ -87,11 +92,12 @@ function renderHeader(){
     ? "共 "+notes.items.length+" 則"
     : "隨時記下來的地方，分類自己管";
   var done=0; week.blocks.forEach(function(b){ done+=b.len*0.5; });
-  var plan=0; cfg.tasks.forEach(function(t){ plan+=t.target||0; });
+  var wp=plannedOf(true), op=plannedOf(false);
   $("doneTotal").textContent=fmtH(done);
-  $("planTotal").textContent=fmtH(plan);
-  $("planStat").classList.toggle("over",plan>cfg.budget);
+  $("planTotal").textContent=fmtH(wp+op);
+  $("planStat").classList.toggle("over",wp>cfg.budget||op>cfg.budgetOff);
   if(document.activeElement!==$("budgetVal")) $("budgetVal").value=cfg.budget;
+  if(document.activeElement!==$("budgetOff")) $("budgetOff").value=cfg.budgetOff;
   var c=notes.items.length?String(notes.items.length):"";
   $("tabCount").textContent=c; $("dockCount").textContent=c;
 }
@@ -99,44 +105,52 @@ function renderHeader(){
 /* ── 分配軌 ───────────────────────────── */
 function renderRail(){
   var box=$("railBox"); box.innerHTML=""; box.style.background="";
-  var plan=0, wk=0; cfg.tasks.forEach(function(t){ plan+=t.target||0; if(isWork(t)) wk+=t.target||0; });
-  $("kindSum").innerHTML='<span class="kw"><i></i>上班 '+fmtH(wk)+'h</span><span class="ko"><i></i>放假 '+fmtH(plan-wk)+'h</span>';
+  var wp=plannedOf(true), op=plannedOf(false);
+  $("kindSum").innerHTML='<span class="kw"><i></i>上班 '+fmtH(wp)+' / '+fmtH(cfg.budget)+'h</span>'+
+    '<span class="ko"><i></i>放假 '+fmtH(op)+' / '+fmtH(cfg.budgetOff)+'h</span>';
   if(!cfg.tasks.length){
     box.innerHTML='<div class="rail-empty">先在下面加入項目，這條軌會顯示時間怎麼分配。</div>';
     return;
   }
-  var done=doneByTask(), total=Math.max(cfg.budget,plan,0.5);
+  /* 上班、放假各有自己的總時數：軌道前半是上班（項目＋未分配），後半是放假 */
+  var done=doneByTask();
+  var wSpan=Math.max(cfg.budget,wp), oSpan=Math.max(cfg.budgetOff,op);
+  var total=Math.max(wSpan+oSpan,0.5);
   var rail=document.createElement("div"); rail.className="rail";
-  /* 軌道底色：左邊是上班的藍，上班項目排在左邊坐在藍色上，
-     右邊漸層回原本的底色，放假項目排在那裡 */
-  var wx=Math.min(wk/total*100,100), fade=wx+(100-wx)*0.7;
-  box.style.background=wk>0
+  /* 軌道底色：左邊是上班的藍（長度＝上班總時數的比例），往右漸層回原本的底色 */
+  var wx=Math.min(wSpan/total*100,100), fade=wx+(100-wx)*0.7;
+  box.style.background=wSpan>0
     ? "linear-gradient(90deg,var(--work) 0,var(--work) "+wx+"%,var(--bg) "+fade+"%)"
     : "";
-  var ordered=cfg.tasks.filter(isWork).concat(cfg.tasks.filter(function(t){ return !isWork(t); }));
-  ordered.forEach(function(t){
-    var tg=t.target||0, d=done[t.id]||0;
-    var ratio=tg>0?Math.min(d/tg,1):(d>0?1:0);
-    var seg=document.createElement("div");
-    seg.className="seg"+(ratio>0.5?"":" pale")+(tg>0&&d>tg?" over":"");
-    seg.style.flex=(tg>0?tg:0.4)+" 0 0";
-    seg.innerHTML='<div class="fill" style="background:'+t.color+';width:'+(ratio*100)+'%"></div>'+
-      '<div class="tag">'+esc(t.name)+'</div><div class="amt">'+fmtH(d)+'/'+fmtH(tg)+'</div>';
-    rail.appendChild(seg);
-  });
-  var free=cfg.budget-plan;
-  if(free>0.01){
-    var fs=document.createElement("div"); fs.className="seg free"; fs.style.flex=free+" 0 0";
-    fs.innerHTML='<div class="tag">未分配</div><div class="amt">'+fmtH(free)+'h</div>';
-    rail.appendChild(fs);
+  function addGroup(work,budget,plan){
+    cfg.tasks.filter(function(t){ return isWork(t)===work; }).forEach(function(t){
+      var tg=t.target||0, d=done[t.id]||0;
+      var ratio=tg>0?Math.min(d/tg,1):(d>0?1:0);
+      var seg=document.createElement("div");
+      seg.className="seg"+(ratio>0.5?"":" pale")+(tg>0&&d>tg?" over":"");
+      seg.style.flex=(tg>0?tg:0.4)+" 0 0";
+      seg.innerHTML='<div class="fill" style="background:'+t.color+';width:'+(ratio*100)+'%"></div>'+
+        '<div class="tag">'+esc(t.name)+'</div><div class="amt">'+fmtH(d)+'/'+fmtH(tg)+'</div>';
+      rail.appendChild(seg);
+    });
+    var free=budget-plan;
+    if(free>0.01){
+      var fs=document.createElement("div"); fs.className="seg free"; fs.style.flex=free+" 0 0";
+      fs.innerHTML='<div class="tag">未分配</div><div class="amt">'+fmtH(free)+'h</div>';
+      rail.appendChild(fs);
+    }
   }
+  addGroup(true,cfg.budget,wp);
+  addGroup(false,cfg.budgetOff,op);
   box.appendChild(rail);
-  if(plan>cfg.budget+0.01){
+  function overLine(at,over){
     var ln=document.createElement("div"); ln.className="bline";
-    ln.style.left="calc(13px + (100% - 26px) * "+(cfg.budget/total)+")";
-    ln.innerHTML='<b>超出 '+fmtH(plan-cfg.budget)+'h</b>';
+    ln.style.left="calc(13px + (100% - 26px) * "+(at/total)+")";
+    ln.innerHTML='<b>超出 '+fmtH(over)+'h</b>';
     box.appendChild(ln);
   }
+  if(wp>cfg.budget+0.01) overLine(cfg.budget,wp-cfg.budget);
+  if(op>cfg.budgetOff+0.01) overLine(wSpan+cfg.budgetOff,op-cfg.budgetOff);
 }
 
 /* ── 項目 ─────────────────────────────── */
@@ -854,7 +868,11 @@ $("newName").addEventListener("keydown",function(e){ if(e.key==="Enter") $("addT
 $("newHours").addEventListener("keydown",function(e){ if(e.key==="Enter") $("addTask").click(); });
 
 $("budgetVal").oninput=function(){
-  cfg.budget=Math.max(1,parseFloat($("budgetVal").value)||1);
+  cfg.budget=Math.max(0,parseFloat($("budgetVal").value)||0);
+  saveSoon(); renderHeader(); renderRail();
+};
+$("budgetOff").oninput=function(){
+  cfg.budgetOff=Math.max(0,parseFloat($("budgetOff").value)||0);
   saveSoon(); renderHeader(); renderRail();
 };
 
@@ -970,12 +988,18 @@ $("clearBtn").onclick=function(){
 $("copyBtn").onclick=function(){
   var end=addDays(weekStart,6);
   var L=["本週時間帳 "+iso(weekStart)+" ~ "+iso(end),""];
-  var done=doneByTask(), total=0;
-  cfg.tasks.forEach(function(t){
-    var d=done[t.id]||0; total+=d;
-    L.push(t.name+"　"+fmtH(d)+" / "+fmtH(t.target)+" h");
+  var done=doneByTask(), got={true:0,false:0};
+  [true,false].forEach(function(work){
+    var rows=cfg.tasks.filter(function(t){ return isWork(t)===work; });
+    if(!rows.length) return;
+    L.push("【"+(work?"上班":"放假")+"】");
+    rows.forEach(function(t){
+      var d=done[t.id]||0; got[work]+=d;
+      L.push(t.name+"　"+fmtH(d)+" / "+fmtH(t.target)+" h");
+    });
+    L.push("小計 "+fmtH(got[work])+" / "+fmtH(work?cfg.budget:cfg.budgetOff)+" h","");
   });
-  L.push("","合計 "+fmtH(total)+" / "+fmtH(cfg.budget)+" h");
+  L.push("合計 "+fmtH(got[true]+got[false])+" / "+fmtH(cfg.budget+cfg.budgetOff)+" h");
   var txt=L.join("\n");
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt).then(function(){ flash($("copyBtn"),"已複製"); },function(){ alert(txt); });
