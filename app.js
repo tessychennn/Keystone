@@ -428,9 +428,12 @@ function renderCal(){
       el.style.left=(w*b._lane)+"%";
       el.style.width="calc("+w+"% - 3px)";
       if(lum(t.color)>0.72) el.style.color="#49536A";
+      /* 備註接在時間下面，高度放得下幾行就顯示幾行 */
+      var lines=Math.floor((b.len*SLOT-3-10-14-(b.len>=2?11:0))/12.5);
       el.innerHTML='<span class="bn">'+esc(t.name)+'</span>'+
-        (b.len>=2?'<span class="bt">'+slotLabel(b.start)+'–'+slotLabel(b.start+b.len)+'</span>':'');
-      el.title=t.name+" · "+fmtH(b.len*0.5)+"h";
+        (b.len>=2?'<span class="bt">'+slotLabel(b.start)+'–'+slotLabel(b.start+b.len)+'</span>':'')+
+        (b.note&&b.len>=2&&lines>=1?'<span class="bm" style="-webkit-line-clamp:'+lines+'">'+esc(b.note)+'</span>':'');
+      el.title=t.name+" · "+fmtH(b.len*0.5)+"h"+(b.note?"\n"+b.note:"");
       col.appendChild(el);
     });
     well.appendChild(col);
@@ -732,6 +735,7 @@ function openPop(id,x,y){
   p.className="pop";
   p.innerHTML='<div class="pn"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</div>'+
     '<div class="pt">'+slotLabel(b.start)+'–'+slotLabel(b.start+b.len)+' · '+fmtH(b.len*0.5)+' 小時</div>'+
+    '<textarea class="pnote" rows="2" maxlength="120" placeholder="這段時間做了什麼？備註會顯示在色塊上"></textarea>'+
     '<div class="dur"><button data-d="-1">− 30m</button><button data-d="1">+ 30m</button></div>'+
     '<div class="pacts"><button class="danger" data-act="del">刪除</button><button data-act="close">關閉</button></div>';
   document.body.appendChild(p);
@@ -739,6 +743,14 @@ function openPop(id,x,y){
   p.style.left=Math.max(10,Math.min(window.innerWidth-w-10,x-w/2))+"px";
   p.style.top=(y+h+16>window.innerHeight?Math.max(10,y-h-12):y+12)+"px";
   p.addEventListener("pointerdown",function(ev){ ev.stopPropagation(); });
+  var ta=p.querySelector(".pnote");
+  ta.value=b.note||"";
+  ta.oninput=function(){
+    var v=ta.value.trim();
+    if(v) b.note=v; else delete b.note;
+    saveSoon(); renderCal();
+  };
+  ta.onkeydown=function(e){ if(e.key==="Escape") closePop(); };
   p.querySelectorAll("[data-d]").forEach(function(btn){
     btn.onclick=function(){
       b.len=Math.max(1,Math.min(slots()-b.start,b.len+(+btn.dataset.d)));
