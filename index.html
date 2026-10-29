@@ -17,6 +17,10 @@
   這個瀏覽器不讓網站存資料，所以關掉分頁後紀錄會消失。
 </div>
 
+<div class="warn" id="syncWarn" hidden>
+  這台還沒連上雲端，所以先不存任何資料，免得把雲端的資料蓋掉。連上網路後重新整理就好。
+</div>
+
 <div class="app" id="app" data-view="cal">
   <header class="masthead">
     <div class="brand">
@@ -96,6 +100,7 @@
           <button id="exportBtn">匯出備份</button>
           <button id="importBtn">讀入備份</button>
           <button id="syncBtn">設定雲端同步</button>
+          <button id="undoSyncBtn">找回被同步蓋掉的資料</button>
           <input type="file" id="importFile" accept="application/json,.json" hidden>
         </div>
       </aside>
@@ -200,7 +205,8 @@
     </button>
   </div>
 </nav>
-<script src="storage.js"></script>
-<script src="app.js"></script>
+<!-- 檔名後的 ?v= 每次改 js 時換一個數字，手機才不會拿到新舊混在一起的快取 -->
+<script src="storage.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

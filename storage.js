@@ -104,6 +104,31 @@ var Store = (function(){
   var meta = {};
   var pushTimer = 0;
   var pending = {};
+  var synced = false;                     // 這次開啟後，有沒有成功跟雲端對過帳
+  var BACKUP = "keystone-sync:backup";
+
+  /* 雲端資料要蓋掉本機之前，先把本機原本的內容存一份。
+     一次對帳存一個快照，最多留 3 份；萬一被蓋錯了還找得回來。 */
+  function stashBackup(data){
+    try{
+      var all = JSON.parse(window.localStorage.getItem(BACKUP) || "[]") || [];
+      all.unshift({ at: Date.now(), data: data });
+      window.localStorage.setItem(BACKUP, JSON.stringify(all.slice(0, 3)));
+    }catch(e){}
+  }
+  function backups(){
+    try{ return JSON.parse(window.localStorage.getItem(BACKUP) || "[]") || []; }catch(e){ return []; }
+  }
+  /* 把第 i 份備份寫回來；寫回的資料帶新時間戳，會一路同步到雲端 */
+  function restoreBackup(i){
+    var snap = backups()[i];
+    if(!snap) return 0;
+    var n = 0;
+    Object.keys(snap.data).forEach(function(k){
+      try{ set(k, JSON.parse(snap.data[k])); n++; }catch(e){}
+    });
+    return n;
+  }
 
   try{
     syncCfg = JSON.parse(window.localStorage.getItem(SYNC_CFG) || "null");
@@ -159,7 +184,7 @@ var Store = (function(){
      雲端沒有的鍵則會補傳上去。 */
   function sync(opts){
     if(!syncCfg || backend !== "local") return Promise.resolve(0);
-    var applied = 0;
+    var applied = 0, stash = {};
     return flush().then(function(){
       return api("/sync", opts);
     }).then(function(remote){
@@ -167,7 +192,9 @@ var Store = (function(){
       Object.keys(remote).forEach(function(k){
         if(remote[k] > (meta[k] || 0)){
           jobs.push(api("/sync/" + encodeURIComponent(k), opts).then(function(r){
-            window.localStorage.setItem(k, JSON.stringify(r.v));
+            var raw = JSON.stringify(r.v), old = window.localStorage.getItem(k);
+            if(old !== null && old !== raw) stash[k] = old;
+            window.localStorage.setItem(k, raw);
             mem[k] = r.v;
             meta[k] = r.t;
             applied++;
@@ -185,6 +212,8 @@ var Store = (function(){
       return Promise.all(jobs);
     }).then(function(){
       saveMeta();
+      if(Object.keys(stash).length) stashBackup(stash);
+      synced = true;
       return applied;
     });
   }
@@ -268,6 +297,9 @@ var Store = (function(){
     /* 啟動時的第一次對帳；app.js 要等它完成再讀資料 */
     ready: ready,
     syncEnabled: function(){ return !!syncCfg; },
+    synced: function(){ return synced; },
+    backups: backups,
+    restoreBackup: restoreBackup,
     syncConfig: function(){ return syncCfg; },
     setupSync: setupSync,
     testSync: testSync,

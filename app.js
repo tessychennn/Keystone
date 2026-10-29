@@ -37,7 +37,12 @@ function weekKey(){ return "keystone:w:"+iso(weekStart); }
 function load(k){ return Store.get(k); }
 function save(k,v){ return Store.set(k,v); }
 var timer=null;
+/* 啟動完成、資料真的讀進來之前一律不存。
+   否則還沒載入的預設空資料（沒有項目、沒有筆記）會被當成「剛改的」存下去，
+   帶著新時間戳同步出去，蓋掉雲端與另一台的真資料。 */
+var loaded=false, held=false;
 function saveSoon(){
+  if(!loaded || held) return;
   clearTimeout(timer);
   var wk=weekKey();
   timer=setTimeout(function(){
@@ -398,7 +403,7 @@ $("addTodo").onclick=function(){
 $("newTodo").addEventListener("keydown",function(e){ if(e.key==="Enter") $("addTodo").click(); });
 
 /* 開著過午夜也會自己翻頁 */
-function watchDay(){ if(rollover()) renderTodos(); }
+function watchDay(){ if(loaded && rollover()) renderTodos(); }
 setInterval(watchDay,30000);
 document.addEventListener("visibilitychange",function(){ if(!document.hidden) watchDay(); });
 window.addEventListener("focus",watchDay);
@@ -979,6 +984,23 @@ $("syncBtn").onclick=function(){
   });
 };
 
+$("undoSyncBtn").onclick=function(){
+  var list=Store.backups?Store.backups():[];
+  if(!list.length){ alert("這台沒有被同步蓋掉的備份。\n（只有更新到這個版本之後才開始備份。）"); return; }
+  var lines=list.map(function(s,i){
+    var d=new Date(s.at);
+    return (i+1)+". "+(d.getMonth()+1)+"/"+d.getDate()+" "+pad(d.getHours())+":"+pad(d.getMinutes())+"　"+Object.keys(s.data).length+" 筆";
+  });
+  var pick=prompt("同步時，這台原本的資料被雲端蓋掉過，留了這幾份：\n"+lines.join("\n")+"\n\n輸入編號，用那一份還原：","1");
+  if(pick===null) return;
+  var i=parseInt(pick,10)-1;
+  if(!(i>=0&&i<list.length)){ alert("沒有這個編號。"); return; }
+  if(!confirm("用第 "+(i+1)+" 份還原？現在的資料會被取代，並同步到雲端。")) return;
+  var n=Store.restoreBackup(i);
+  alert("還原了 "+n+" 筆，現在重新載入。");
+  setTimeout(function(){ location.reload(); },900);   // 等還原的資料先送上雲端
+};
+
 $("clearBtn").onclick=function(){
   if(!week.blocks.length) return;
   if(!confirm("清空本週所有色塊？項目設定與筆記會保留。")) return;
@@ -1013,11 +1035,18 @@ function renderAll(){
 }
 
 window.addEventListener("resize",function(){ closePop(); });
+window.addEventListener("online",function(){ if(held) location.reload(); });
 
 /* ── 啟動 ─────────────────────────────── */
 (async function init(){
   await Store.ready;
   var saved=await load(CFG_KEY);
+  /* 有開同步、這台又沒有任何資料、而且沒連上雲端：這時的「預設值」不是資料，
+     存下去會蓋掉雲端的真資料。先不存，等連上再說。 */
+  if(!saved && Store.syncEnabled() && Store.synced && !Store.synced()){
+    held=true;
+    $("syncWarn").hidden=false;
+  }
   if(saved){
     cfg=Object.assign(cfg,saved);
     if(!cfg.seq) cfg.seq=(cfg.tasks.reduce(function(m,t){ return Math.max(m,t.id); },0)||0)+1;
@@ -1029,7 +1058,7 @@ window.addEventListener("resize",function(){ closePop(); });
       {id:4,name:"會議與行政",target:4, color:PALETTE[3]}
     ];
     cfg.seq=5;
-    save(CFG_KEY,cfg);
+    if(!held) save(CFG_KEY,cfg);
   }
   fillRange();
   var sn=await load(NOTE_KEY);
@@ -1052,11 +1081,13 @@ window.addEventListener("resize",function(){ closePop(); });
     if(!todos.seq) todos.seq=(todos.items.reduce(function(m,t){ return Math.max(m,t.id); },0)||0)+1;
     if(!todos.day) todos.day="";
   }
-  rollover();
+  var rolled=rollover();
 
   week=(await load(weekKey()))||{blocks:[],seq:1};
   normalizeWeek();
   if(Store.backend()!=="local") $("storeWarn").hidden=false;
+  loaded=true;
+  if(rolled) saveSoon();
   renderAll();
   setTimeout(scrollToToday,60);
 })();
