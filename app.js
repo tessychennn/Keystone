@@ -172,7 +172,7 @@ function renderTasks(){
 
     var sw=document.createElement("button");
     sw.className="sw"; sw.style.background=t.color; sw.setAttribute("aria-label","換顏色"); sw.title="換顏色";
-    sw.onclick=function(e){ e.stopPropagation(); t.color=PALETTE[(PALETTE.indexOf(t.color)+1)%PALETTE.length]; saveSoon(); renderAll(); };
+    sw.onclick=function(e){ e.stopPropagation(); openColorPop(t,e.clientX,e.clientY); };
 
     var main=document.createElement("div"); main.className="tmain";
     /* 唯讀時整列都是選取區；雙擊名稱才進入編輯 */
@@ -280,6 +280,36 @@ $("gearBtn").onclick=function(e){ e.stopPropagation(); toggleTools(); };
 $("tools").addEventListener("click",function(e){ if(e.target.tagName==="BUTTON") toggleTools(false); });
 document.addEventListener("click",function(e){ if(!$("tools").contains(e.target)) toggleTools(false); });
 window.addEventListener("scroll",function(){ toggleTools(false); },{passive:true});
+
+/* 項目顏色：點色點展開一排，一次選定。最後一格可自訂 */
+var PICK=PALETTE.concat(["#D4A5A5","#9AA5C8","#7FB5B0","#D9A066","#B58DAA","#8C9BA8","#B8B27A","#C9788E"]);
+function openColorPop(t,x,y){
+  closePop();
+  var p=document.createElement("div");
+  p.className="pop";
+  p.innerHTML='<div class="pn"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</div><div class="swgrid"></div>';
+  var grid=p.querySelector(".swgrid");
+  function apply(c){ t.color=c; saveSoon(); renderAll(); closePop(); }
+  PICK.forEach(function(c){
+    var b=document.createElement("button");
+    b.className="swc"+(c.toLowerCase()===String(t.color).toLowerCase()?" on":"");
+    b.style.background=c; b.setAttribute("aria-label","選用顏色 "+c);
+    b.onclick=function(){ apply(c); };
+    grid.appendChild(b);
+  });
+  var cu=document.createElement("label");
+  cu.className="swc custom"; cu.title="自訂顏色";
+  cu.innerHTML='<input type="color" aria-label="自訂顏色">';
+  cu.querySelector("input").value=/^#[0-9a-f]{6}$/i.test(t.color)?t.color:"#7FA6B8";
+  cu.querySelector("input").onchange=function(e){ apply(e.target.value); };
+  grid.appendChild(cu);
+  document.body.appendChild(p);
+  var w=p.offsetWidth,h=p.offsetHeight;
+  p.style.left=Math.max(10,Math.min(window.innerWidth-w-10,x-w/2))+"px";
+  p.style.top=(y+h+16>window.innerHeight?Math.max(10,y-h-12):y+12)+"px";
+  p.addEventListener("pointerdown",function(ev){ ev.stopPropagation(); });
+  popEl=p;
+}
 
 /* 項目的「編輯」視窗：改上班／放假，或刪除 */
 function openTaskPop(t,x,y){

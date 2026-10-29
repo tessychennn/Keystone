@@ -140,6 +140,12 @@ input,select,textarea{border:none;background:none}
 .task.armed{box-shadow:var(--in-sm)}
 .tedit svg{width:14px;height:14px;display:block}
 .tedit:hover{color:var(--va)}
+.swgrid{display:grid;grid-template-columns:repeat(9,22px);gap:10px;margin-top:11px}
+.swc{width:22px;height:22px;border-radius:50%;padding:0;box-shadow:var(--up-sm);display:block;position:relative;cursor:pointer}
+.swc.on{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ink-2)}
+.swc.custom{background:conic-gradient(#d4a5a5,#d9a066,#b8b27a,#7fb5b0,#6e9bc4,#b58daa,#d4a5a5)}
+.swc.custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+@media (max-width:430px){ .swgrid{grid-template-columns:repeat(6,1fr);justify-items:center} }
 .pop .dur button.on{box-shadow:var(--in-sm);color:var(--va)}
 .sw{width:17px;height:17px;border-radius:50%;flex:none;box-shadow:var(--up-sm)}
 .tmain{flex:1;min-width:0}
