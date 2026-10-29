@@ -45,6 +45,8 @@ function saveSoon(){
 }
 
 function doneByTask(){ var m={}; week.blocks.forEach(function(b){ m[b.taskId]=(m[b.taskId]||0)+b.len*0.5; }); return m; }
+/* 沒設定過的項目一律當上班 */
+function isWork(t){ return t.kind!=="off"; }
 function taskById(id){ for(var i=0;i<cfg.tasks.length;i++) if(cfg.tasks[i].id===id) return cfg.tasks[i]; return null; }
 function catOf(id){
   for(var i=0;i<notes.cats.length;i++) if(notes.cats[i].id===id) return notes.cats[i];
@@ -96,15 +98,23 @@ function renderHeader(){
 
 /* ── 分配軌 ───────────────────────────── */
 function renderRail(){
-  var box=$("railBox"); box.innerHTML="";
-  var plan=0; cfg.tasks.forEach(function(t){ plan+=t.target||0; });
+  var box=$("railBox"); box.innerHTML=""; box.style.background="";
+  var plan=0, wk=0; cfg.tasks.forEach(function(t){ plan+=t.target||0; if(isWork(t)) wk+=t.target||0; });
+  $("kindSum").innerHTML='<span class="kw"><i></i>上班 '+fmtH(wk)+'h</span><span class="ko"><i></i>放假 '+fmtH(plan-wk)+'h</span>';
   if(!cfg.tasks.length){
     box.innerHTML='<div class="rail-empty">先在下面加入項目，這條軌會顯示時間怎麼分配。</div>';
     return;
   }
   var done=doneByTask(), total=Math.max(cfg.budget,plan,0.5);
   var rail=document.createElement("div"); rail.className="rail";
-  cfg.tasks.forEach(function(t){
+  /* 軌道底色：左邊是上班的藍，上班項目排在左邊坐在藍色上，
+     右邊漸層回原本的底色，放假項目排在那裡 */
+  var wx=Math.min(wk/total*100,100), fade=wx+(100-wx)*0.7;
+  box.style.background=wk>0
+    ? "linear-gradient(90deg,var(--work) 0,var(--work) "+wx+"%,var(--bg) "+fade+"%)"
+    : "";
+  var ordered=cfg.tasks.filter(isWork).concat(cfg.tasks.filter(function(t){ return !isWork(t); }));
+  ordered.forEach(function(t){
     var tg=t.target||0, d=done[t.id]||0;
     var ratio=tg>0?Math.min(d/tg,1):(d>0?1:0);
     var seg=document.createElement("div");
@@ -179,18 +189,9 @@ function renderTasks(){
     num.appendChild(s1); num.appendChild(hi); num.appendChild(document.createTextNode(" h"));
 
     var del=document.createElement("button");
-    del.className="tdel"; del.textContent="×"; del.setAttribute("aria-label","刪除項目 "+t.name);
-    del.onclick=function(e){
-      e.stopPropagation();
-      var nb=week.blocks.filter(function(b){ return b.taskId===t.id; }).length;
-      var msg="刪除項目「"+t.name+"」？";
-      if(nb) msg+="\n本週 "+nb+" 個色塊會一併移除。";
-      if(!confirm(msg)) return;
-      cfg.tasks=cfg.tasks.filter(function(x){ return x.id!==t.id; });
-      week.blocks=week.blocks.filter(function(b){ return b.taskId!==t.id; });
-      if(armed===t.id) armed=null;
-      saveSoon(); renderAll();
-    };
+    del.className="tdel tedit"; del.setAttribute("aria-label","編輯項目 "+t.name); del.title="編輯";
+    del.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 4.5l3 3L8 19l-4 1 1-4z"/></svg>';
+    del.onclick=function(e){ e.stopPropagation(); openTaskPop(t,e.clientX,e.clientY); };
 
     row.appendChild(sw); row.appendChild(main);
     if(sorting){
@@ -260,6 +261,38 @@ $("gearBtn").onclick=function(e){ e.stopPropagation(); toggleTools(); };
 $("tools").addEventListener("click",function(e){ if(e.target.tagName==="BUTTON") toggleTools(false); });
 document.addEventListener("click",function(e){ if(!$("tools").contains(e.target)) toggleTools(false); });
 window.addEventListener("scroll",function(){ toggleTools(false); },{passive:true});
+
+/* 項目的「編輯」視窗：改上班／放假，或刪除 */
+function openTaskPop(t,x,y){
+  closePop();
+  var p=document.createElement("div");
+  p.className="pop";
+  p.innerHTML='<div class="pn"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</div>'+
+    '<div class="pt">這項算哪一種時間？</div>'+
+    '<div class="dur"><button data-k="work">上班</button><button data-k="off">放假</button></div>'+
+    '<div class="pacts"><button class="danger" data-act="del">刪除項目</button><button data-act="close">關閉</button></div>';
+  document.body.appendChild(p);
+  var w=p.offsetWidth,h=p.offsetHeight;
+  p.style.left=Math.max(10,Math.min(window.innerWidth-w-10,x-w/2))+"px";
+  p.style.top=(y+h+16>window.innerHeight?Math.max(10,y-h-12):y+12)+"px";
+  p.addEventListener("pointerdown",function(ev){ ev.stopPropagation(); });
+  p.querySelectorAll("[data-k]").forEach(function(btn){
+    btn.classList.toggle("on",(btn.dataset.k==="work")===isWork(t));
+    btn.onclick=function(){ t.kind=btn.dataset.k; saveSoon(); renderAll(); closePop(); };
+  });
+  p.querySelector('[data-act="del"]').onclick=function(){
+    var nb=week.blocks.filter(function(b){ return b.taskId===t.id; }).length;
+    var msg="刪除項目「"+t.name+"」？";
+    if(nb) msg+="\n本週 "+nb+" 個色塊會一併移除。";
+    if(!confirm(msg)) return;
+    cfg.tasks=cfg.tasks.filter(function(v){ return v.id!==t.id; });
+    week.blocks=week.blocks.filter(function(b){ return b.taskId!==t.id; });
+    if(armed===t.id) armed=null;
+    saveSoon(); renderAll(); closePop();
+  };
+  p.querySelector('[data-act="close"]').onclick=closePop;
+  popEl=p;
+}
 
 function renderArmed(){
   var n=$("armedNote"), t=armed?taskById(armed):null;
