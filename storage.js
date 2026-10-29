@@ -78,10 +78,14 @@ var Store = (function(){
 
   function set(key, val){
     mem[key] = val;                      // 記憶體永遠留一份當快取
-    touch(key);
     if(backend !== "local") return false;
     try{
-      window.localStorage.setItem(key, JSON.stringify(val));
+      var raw = JSON.stringify(val);
+      /* app.js 每次存檔會把四個鍵全寫一遍。內容沒變就不要動，
+         否則沒改過的舊資料會拿到新時間戳，把另一台剛改的資料蓋掉。 */
+      if(window.localStorage.getItem(key) === raw) return true;
+      window.localStorage.setItem(key, raw);
+      touch(key);
       return true;
     }catch(e){
       /* 配額爆掉或被封鎖：資料還在記憶體，這個 session 照常用 */

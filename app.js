@@ -12,7 +12,7 @@ var notes={items:[],cats:[],seq:1,cseq:1};
 var todos={items:[],seq:1,day:""};
 var todoOnce=false;
 var weekStart=mondayOf(new Date());
-var armed=null, drag=null, popEl=null;
+var armed=null, drag=null, popEl=null, sorting=false;
 var noteFilter="all", editingNote=null;
 
 function $(id){ return document.getElementById(id); }
@@ -136,7 +136,7 @@ function renderTasks(){
   if(!cfg.tasks.length){
     host.innerHTML='<div style="color:var(--ink-3);font-size:12.5px;padding:4px 0 8px">還沒有項目。在下面輸入名稱和每週想花的時數。</div>';
   }
-  cfg.tasks.forEach(function(t){
+  cfg.tasks.forEach(function(t,idx){
     var d=done[t.id]||0;
     var row=document.createElement("div");
     row.className="task"+(armed===t.id?" armed":"");
@@ -192,23 +192,78 @@ function renderTasks(){
       saveSoon(); renderAll();
     };
 
-    row.appendChild(sw); row.appendChild(main); row.appendChild(num); row.appendChild(del);
+    row.appendChild(sw); row.appendChild(main);
+    if(sorting){
+      row.classList.add("sorting");
+      var mv=document.createElement("div"); mv.className="mv";
+      [["▲",-1,"上移"],["▼",1,"下移"]].forEach(function(a){
+        var b=document.createElement("button");
+        b.textContent=a[0]; b.setAttribute("aria-label",a[2]+" "+t.name);
+        var to=idx+a[1];
+        b.disabled=to<0||to>=cfg.tasks.length;
+        b.onclick=function(e){
+          e.stopPropagation();
+          cfg.tasks.splice(to,0,cfg.tasks.splice(idx,1)[0]);
+          saveSoon(); renderAll();
+        };
+        mv.appendChild(b);
+      });
+      row.appendChild(mv);
+    }else{
+      row.appendChild(num); row.appendChild(del);
+    }
     /* 選取只切 class，不重繪清單 —— 重繪會把節點換掉，雙擊就落不到原本那一列 */
     row.onclick=function(){
+      if(sorting) return;
       if(!nm.readOnly) return;            // 正在改名時不要順手取消選取
       armed=(armed===t.id?null:t.id);
       document.querySelectorAll("#taskList .task").forEach(function(r){
         r.classList.toggle("armed", r===row && armed===t.id);
       });
       renderArmed();
+      if(armed && mobileQ.matches) $("taskCard").classList.remove("open");   // 選好就收起來，直接去畫
     };
     host.appendChild(row);
   });
   $("cal").classList.toggle("arm",!!armed);
+  $("sortBtn").hidden=cfg.tasks.length<2;
+  $("sortBtn").textContent=sorting?"完成":"調整順序";
+  $("sortBtn").classList.toggle("on",sorting);
 }
+
+$("sortBtn").onclick=function(){
+  sorting=!sorting;
+  if(sorting) armed=null;
+  renderTasks(); renderArmed();
+};
+
+/* 手機版：項目與待辦收成一列，點標題展開 */
+var mobileQ=window.matchMedia("(max-width:720px)");
+[["taskHead","taskCard"],["todoHead","todoCard"]].forEach(function(p){
+  $(p[0]).onclick=function(){
+    if(!mobileQ.matches) return;
+    var open=$(p[1]).classList.toggle("open");
+    $(p[0]).setAttribute("aria-expanded",open?"true":"false");
+  };
+});
+
+/* 手機版：備份、同步等按鈕收在右上角的設定鈕 */
+function toggleTools(on){
+  var tl=$("tools"), g=$("gearBtn");
+  if(on===undefined) on=!tl.classList.contains("open");
+  if(on) tl.style.top=(g.getBoundingClientRect().bottom+8)+"px";
+  tl.classList.toggle("open",on);
+  g.classList.toggle("on",on);
+  g.setAttribute("aria-expanded",on?"true":"false");
+}
+$("gearBtn").onclick=function(e){ e.stopPropagation(); toggleTools(); };
+$("tools").addEventListener("click",function(e){ if(e.target.tagName==="BUTTON") toggleTools(false); });
+document.addEventListener("click",function(e){ if(!$("tools").contains(e.target)) toggleTools(false); });
+window.addEventListener("scroll",function(){ toggleTools(false); },{passive:true});
 
 function renderArmed(){
   var n=$("armedNote"), t=armed?taskById(armed):null;
+  $("taskSum").textContent=t?"正在畫 · "+t.name:(cfg.tasks.length?cfg.tasks.length+" 個項目 · 點開選一個":"還沒有項目");
   if(t){
     n.className="note-armed";
     n.innerHTML='正在畫 <b>'+esc(t.name)+'</b>。在週曆上按住往下拖，放開就完成紀錄。再點一次可取消。';

@@ -34,6 +34,9 @@
       筆記 <span class="cnt" id="tabCount"></span>
     </button>
   </nav>
+  <button class="gear" id="gearBtn" aria-label="設定與備份" aria-expanded="false" aria-controls="tools">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
   </header>
 
   <!-- ── 週曆 ───────────────────────────── -->
@@ -67,9 +70,11 @@
 
     <div class="cols">
       <div class="cside">
-      <aside class="card">
-        <h3>項目 <i>點一下選取，雙擊改名</i></h3>
+      <aside class="card fcard tcard" id="taskCard">
+        <h3 id="taskHead">項目 <i class="dk">點一下選取，雙擊改名</i><i class="mb" id="taskSum"></i></h3>
+        <div class="fbody">
         <div id="taskList"></div>
+        <button class="sortbtn" id="sortBtn">調整順序</button>
         <div class="addrow">
           <div class="fld t"><input type="text" id="newName" placeholder="新增項目" maxlength="16"></div>
           <div class="fld h"><input type="number" id="newHours" placeholder="時" min="0" max="80" step="0.5"></div>
@@ -82,7 +87,8 @@
           —
           <select id="endSel" aria-label="結束時間"></select>
         </div>
-        <div class="tools">
+        </div>
+        <div class="tools" id="tools">
           <button id="copyBtn">複製本週摘要</button>
           <button id="clearBtn">清空本週紀錄</button>
           <button id="exportBtn">匯出備份</button>
@@ -92,8 +98,9 @@
         </div>
       </aside>
 
-      <aside class="card">
-        <h3>今日待辦 <i id="todoDate"></i></h3>
+      <aside class="card fcard dcard" id="todoCard">
+        <h3 id="todoHead">今日待辦 <i id="todoDate"></i></h3>
+        <div class="fbody">
         <div id="todoList"></div>
         <div class="addrow">
           <div class="fld t"><input type="text" id="newTodo" placeholder="開工要記得做的事" maxlength="40"></div>
@@ -103,6 +110,7 @@
           <span>新增為</span>
           <button class="modebtn on" data-once="0">每天</button>
           <button class="modebtn" data-once="1">只有明天</button>
+        </div>
         </div>
       </aside>
       </div>
