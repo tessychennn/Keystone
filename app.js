@@ -13,7 +13,7 @@ var todos={items:[],seq:1,day:""};
 var todoOnce=false;
 var weekStart=mondayOf(new Date());
 var armed=null, drag=null, popEl=null, sorting=false;
-var noteFilter="all", editingNote=null;
+var noteFilter="all", openNote=null, noteQuery="", focusBody=false;
 
 function $(id){ return document.getElementById(id); }
 function pad(n){ return n<10?"0"+n:""+n; }
@@ -596,63 +596,100 @@ function noteDate(ts){
     (d.getMonth()+1)+"/"+d.getDate()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
 }
 
+/* 搜尋：空白分隔的每個關鍵字都要出現在標題或內文裡（不分大小寫） */
+function matchNote(n,q){
+  if(!q) return true;
+  var hay=(n.title+"\n"+(n.body||"")).toLowerCase();
+  return q.toLowerCase().split(/\s+/).every(function(w){ return !w || hay.indexOf(w)>=0; });
+}
+
+function growArea(ta){ ta.style.height="auto"; ta.style.height=(ta.scrollHeight+2)+"px"; }
+
 function renderNotes(){
   var host=$("noteList"); host.innerHTML="";
   var list=notes.items.slice().sort(function(a,b){ return b.ts-a.ts; });
   if(noteFilter!=="all") list=list.filter(function(n){ return (n.cat||0)===noteFilter; });
+  list=list.filter(function(n){ return matchNote(n,noteQuery); });
 
   if(!list.length){
     var e=document.createElement("div");
     e.className="nempty";
-    e.textContent=notes.items.length?"這個分類還沒有筆記。"
-      :"還沒有任何筆記。\n填標題、選分類，就能把想法存下來。";
+    e.textContent=!notes.items.length?"還沒有任何筆記。\n填標題、選分類，就能把想法存下來。"
+      :noteQuery?"找不到符合「"+noteQuery+"」的筆記。":"這個分類還沒有筆記。";
     host.appendChild(e);
     return;
   }
+  var focusTa=null;
   list.forEach(function(nt){
     var c=catOf(nt.cat||0);
     var card=document.createElement("div");
-    card.className="ncard";
+    var open=openNote===nt.id;
+    card.className="ncard"+(open?" open":"");
+    card.dataset.id=nt.id;
+
+    if(!open){
+      /* 收合：只露出預覽，點一下展開 */
+      card.tabIndex=0; card.setAttribute("role","button");
+      card.innerHTML='<div class="bar" style="background:'+c.color+'"></div>'+
+        '<div class="top"><h4>'+esc(nt.title)+'</h4><span class="cat">'+esc(c.name)+'</span></div>'+
+        (nt.body?'<div class="body">'+esc(nt.body)+'</div>':'')+
+        '<div class="foot"><span>'+noteDate(nt.ts)+'</span></div>';
+      var expand=function(){ openNote=nt.id; focusBody=true; renderNotes(); };
+      card.onclick=expand;
+      card.onkeydown=function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); expand(); } };
+      host.appendChild(card);
+      return;
+    }
+
+    /* 展開：標題、分類、內文都直接可改，輸入就存，不用按編輯 */
     card.innerHTML='<div class="bar" style="background:'+c.color+'"></div>'+
-      '<div class="top"><h4>'+esc(nt.title)+'</h4><span class="cat">'+esc(c.name)+'</span></div>'+
-      (nt.body?'<div class="body">'+esc(nt.body)+'</div>':'')+
+      '<div class="top"><input class="ntitle" maxlength="60" aria-label="標題"><select class="ncatsel" aria-label="分類"></select></div>'+
+      '<textarea class="nbody" aria-label="內容" placeholder="還沒有內容，直接在這裡寫"></textarea>'+
       '<div class="foot"><span>'+noteDate(nt.ts)+'</span><span class="sp"></span>'+
-      '<button data-a="edit">編輯</button><button class="del" data-a="del">刪除</button></div>';
-    card.querySelector('[data-a="edit"]').onclick=function(){ startEdit(nt.id); };
+      '<button data-a="close">收起</button><button class="del" data-a="del">刪除</button></div>';
+
+    var ti=card.querySelector(".ntitle"), sel=card.querySelector(".ncatsel"), ta=card.querySelector(".nbody");
+    ti.value=nt.title; ta.value=nt.body||"";
+    notes.cats.concat([UNCAT]).forEach(function(ct){
+      var o=document.createElement("option"); o.value=ct.id; o.textContent=ct.name; sel.appendChild(o);
+    });
+    sel.value=String(nt.cat||0);
+
+    /* 以下都只改資料和局部畫面，不重繪清單，輸入中的游標才不會被洗掉 */
+    ti.oninput=function(){ var v=ti.value.trim(); if(v){ nt.title=v; saveSoon(); } };
+    ti.onblur=function(){ if(!ti.value.trim()) ti.value=nt.title; };   // 標題不能空，清空就還原
+    ta.oninput=function(){ nt.body=ta.value; saveSoon(); growArea(ta); };
+    sel.onchange=function(){
+      nt.cat=parseInt(sel.value,10)||0;
+      card.querySelector(".bar").style.background=catOf(nt.cat).color;
+      saveSoon(); renderFilters();
+    };
+    card.querySelector('[data-a="close"]').onclick=function(){ openNote=null; renderNotes(); };
     card.querySelector('[data-a="del"]').onclick=function(){
       if(!confirm("刪除筆記「"+nt.title+"」？")) return;
       notes.items=notes.items.filter(function(x){ return x.id!==nt.id; });
-      if(editingNote===nt.id) resetForm();
+      openNote=null;
       saveSoon(); renderHeader(); renderFilters(); renderNotes();
     };
     host.appendChild(card);
+    focusTa=ta;
   });
+  if(focusTa){
+    growArea(focusTa);
+    /* 只有「剛點開」才把游標放進內文；改分類名稱之類的重繪不能搶走別處的游標 */
+    if(focusBody){
+      focusTa.focus({preventScroll:true});
+      focusTa.setSelectionRange(focusTa.value.length,focusTa.value.length);
+    }
+  }
+  focusBody=false;
 }
 
-function startEdit(id){
-  var nt=notes.items.filter(function(x){ return x.id===id; })[0];
-  if(!nt) return;
-  editingNote=id;
-  $("nTitle").value=nt.title;
-  $("nCat").value=String(nt.cat||0);
-  $("nBody").value=nt.body||"";
-  syncDot();
-  $("noteFormHead").textContent="編輯筆記";
-  $("editFlag").style.display="block";
-  $("editFlag").textContent="正在編輯既有筆記";
-  $("nSave").textContent="更新筆記";
-  $("nCancel").style.display="block";
-  $("nTitle").scrollIntoView({block:"center",behavior:"smooth"});
-  $("nTitle").focus({preventScroll:true});
-}
+$("noteSearch").oninput=function(){ noteQuery=$("noteSearch").value.trim(); renderNotes(); };
+
 function resetForm(){
-  editingNote=null;
   setCatPanel(false);
   $("nTitle").value=""; $("nBody").value="";
-  $("noteFormHead").textContent="新增筆記";
-  $("editFlag").style.display="none";
-  $("nSave").textContent="儲存筆記";
-  $("nCancel").style.display="none";
 }
 
 $("nCat").onchange=syncDot;
@@ -661,15 +698,12 @@ $("nSave").onclick=function(){
   if(!title){ $("nTitle").focus(); return; }
   var cat=parseInt($("nCat").value,10)||0;
   var body=$("nBody").value.trim();
-  if(editingNote){
-    var nt=notes.items.filter(function(x){ return x.id===editingNote; })[0];
-    if(nt){ nt.title=title; nt.cat=cat; nt.body=body; }
-  }else{
-    notes.items.push({id:notes.seq++,title:title,cat:cat,body:body,ts:Date.now()});
-  }
+  var id=notes.seq++;
+  notes.items.push({id:id,title:title,cat:cat,body:body,ts:Date.now()});
+  /* 新加的筆記要看得到：清掉搜尋與分類篩選 */
+  noteQuery=""; $("noteSearch").value=""; noteFilter="all";
   resetForm(); saveSoon(); renderHeader(); renderFilters(); renderNotes();
 };
-$("nCancel").onclick=resetForm;
 $("nTitle").addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); $("nBody").focus(); } });
 
 /* ── 拖曳 ─────────────────────────────── */

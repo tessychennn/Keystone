@@ -143,7 +143,6 @@
     <div class="notewrap">
       <aside class="card">
         <h3 id="noteFormHead">新增筆記</h3>
-        <div class="editing-flag" id="editFlag" style="display:none"></div>
         <div class="nf">
           <label for="nTitle">標題</label>
           <div class="fld"><input type="text" id="nTitle" placeholder="這則筆記在講什麼" maxlength="60"></div>
@@ -172,12 +171,15 @@
           <div class="fld"><textarea id="nBody" placeholder="想記下來的細節、卡住的地方、下次要改什麼⋯"></textarea></div>
         </div>
         <div class="nactions">
-          <button class="go" id="nSave">儲存筆記</button>
-          <button class="ghostbtn" id="nCancel" style="display:none">取消</button>
+          <button class="go" id="nSave">加入筆記</button>
         </div>
       </aside>
 
       <section>
+        <div class="fld nsearch">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+          <input type="search" id="noteSearch" placeholder="搜尋標題或內容" aria-label="搜尋筆記" autocomplete="off">
+        </div>
         <div class="filters" id="noteFilters"></div>
         <div class="nlist" id="noteList"></div>
       </section>
